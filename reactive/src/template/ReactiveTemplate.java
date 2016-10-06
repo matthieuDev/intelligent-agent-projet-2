@@ -1,5 +1,6 @@
 package template;
 
+import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Random;
@@ -30,10 +31,12 @@ public class ReactiveTemplate implements ReactiveBehavior {
 	private double pPickup;
 	private int numActions;
 	private Agent myAgent;
-	private List<State> states;
+	private List<State> states = new ArrayList<State>(0);
 	private int stateSize , nbCity ;
+	private double costByKm ;
 	
-	private double T[][][], R[][] , V[]; 
+	private double T[][][], R[][] ;
+	private int V[];
 	
 
 	@Override
@@ -43,6 +46,8 @@ public class ReactiveTemplate implements ReactiveBehavior {
 		// If the property is not present it defaults to 0.95
 		Double discount = agent.readProperty("discount-factor", Double.class,
 				0.95);
+		costByKm = agent.readProperty( "cost-per-km", Double.class, 0.5).doubleValue();
+		
 
 		this.random = new Random();
 		this.pPickup = discount;
@@ -60,29 +65,28 @@ public class ReactiveTemplate implements ReactiveBehavior {
 
 	@Override
 	public Action act(Vehicle vehicle, Task availableTask) {
-		Action action;
 		
+		Action action = null;
 		State currentState ;
 		City currentCity = vehicle.getCurrentCity();
-		
 		if ( availableTask == null) {
-			currentState = new State ( vehicle.getCurrentCity()  , vehicle.getCurrentCity().randomNeighbor(random) , false) ;
+			action = new Move(currentCity.randomNeighbor(random));
+			//currentState = new State ( vehicle.getCurrentCity()  , vehicle.getCurrentCity().randomNeighbor(random) , false) ;
 		} else {
 			currentState = new State ( vehicle.getCurrentCity()  , availableTask.deliveryCity , true );
+			if ( V[currentState.toInt()] == actionMoveRandomly ){
+				action = new Move(currentCity.randomNeighbor(random));
+			} else if (V[currentState.toInt()] == actionTakeTask) {
+				action = new Pickup(availableTask);
+			} 
 		}
 		
-		if ( V[currentState.toInt()] == actionMoveRandomly ){
-			action = new Move(currentCity.randomNeighbor(random));
-		} else if (V[currentState.toInt()] == actionTakeTask) {
-			action = new Pickup(availableTask);
-		}
 		
-		if (availableTask == null || random.nextDouble() > pPickup) {
+	/*	if (availableTask == null || random.nextDouble() > pPickup) {
 			action = new Move(currentCity.randomNeighbor(random));
 		} else {
 			action = new Pickup(availableTask);
-		}
-		
+		}*/
 		if (numActions >= 1) {
 			System.out.println("The total profit after "+numActions+" actions is "+myAgent.getTotalProfit()+" (average profit: "+(myAgent.getTotalProfit() / (double)numActions)+")");
 		}
@@ -94,6 +98,7 @@ public class ReactiveTemplate implements ReactiveBehavior {
 	void CreateStateDomain (Topology topology) {
 		stateSize = topology.size()*topology.size()*2;
 		List<City> city = topology.cities();
+		
 		for (City  c1 : city){
 			for(City c2 : city ) {
 				states.add(new State (c1,c2,true));
@@ -106,7 +111,7 @@ public class ReactiveTemplate implements ReactiveBehavior {
 		int size = topology.size();
 		R = new double[stateSize][2];
 		for (int i = 0; i < size; i++) {
-			for (int j = 0; j < 3; j++) {
+			for (int j = 0; j < 2; j++) {
 				R[i][j]=0;
 			}
 		}
@@ -114,28 +119,27 @@ public class ReactiveTemplate implements ReactiveBehavior {
 		for(City c : cities){
 			for(City neig : c.neighbors()){
 				int pos = (new State(c , neig , false )).toInt() ;
-				R[pos][actionMoveRandomly] =  - c.distanceTo(neig) ;
-				R[pos][actionTakeTask] =  - c.distanceTo(neig) ;
+				R[pos][actionMoveRandomly] =  - c.distanceTo(neig) * costByKm;
+				
 			}
 			for (City c2 : cities) {
 				int pos = (new State(c , c2 , true )).toInt() ;
-				R[pos][actionTakeTask] = td.reward(c, c2) - c.distanceTo(c2) ;
+				R[pos][actionTakeTask] = td.reward(c, c2) - c.distanceTo(c2) * costByKm ;
 			}
 		}
 	}
 	
 	private void CreateProbabilityTable (Topology topology , TaskDistribution td){
-		T = new double[nbCity][2][nbCity];
+		T = new double[stateSize][2][stateSize];
 		for (int i = 0; i < nbCity; i++) {
 			for (int j = 0; j < nbCity; j++) {
 				T[i][0][j] = 0;
 				T[i][1][j] = 0;
 			}
 		}
-		
 		List<City> cities = topology.cities();
 		
-		for(City c1 : cities){
+		for(City c1 : cities) {
 			for(City c2 : cities){
 				//Take task proba
 				double probaCount = 1;
@@ -154,7 +158,6 @@ public class ReactiveTemplate implements ReactiveBehavior {
 							[actionTakeTask]
 							[(new State(c2, nc , false)).toInt()] = probaCount*( 1 / nbNeighbor);
 				}
-				
 				//random move proba
 				for(City c3 : c1.neighbors()){
 					T[(new State(c1, c2 , true)).toInt()]
@@ -166,7 +169,6 @@ public class ReactiveTemplate implements ReactiveBehavior {
 				
 				
 			}
-			
 			for(City c2 : c1.neighbors()){
 				double probaCount = 1;
 				for(City c3 : cities){
@@ -177,8 +179,8 @@ public class ReactiveTemplate implements ReactiveBehavior {
 							[(new State(c2, c3 , true)).toInt()] = cproba;
 					
 				}
-				
 				List<City> neighbor = c2.neighbors();
+				
 				int nbNeighbor = neighbor.size();
 				for ( City nc : neighbor) {
 					T[(new State(c1, c2 , false)).toInt()]
@@ -191,13 +193,13 @@ public class ReactiveTemplate implements ReactiveBehavior {
 	
 	private void CreateIndicatingVector(double discount) {
 		int noDiff = 0 ;
+		V = new int[stateSize];
 		double Qmax[] = new double[stateSize] ;
 		for (int i = 0; i < stateSize; i++) {
 			Qmax[i] = 0 ;
 		}
 		while ( noDiff < stateSize){
 			noDiff=0;
-			
 			for(State s : states){
 				
 				int coord = s.toInt();
@@ -210,20 +212,17 @@ public class ReactiveTemplate implements ReactiveBehavior {
 					for (State s2 : states) {
 						Q[a] += discount* T[coord][a][s2.toInt()]*Qmax[coord];
 					}
-					
 					int best ; 
 					if(Q[0]<Q[1]){
 						best = 1;
 					}else {
 						best = 0;
 					}
-					
 					V[coord] = best ;
 					if(Qmax[coord] == Q[best]){
 						noDiff++;
 					}
 					Qmax[coord] = Q[best];
-					
 				}
 			}
 			
