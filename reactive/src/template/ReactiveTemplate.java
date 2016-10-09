@@ -78,7 +78,6 @@ public class ReactiveTemplate implements ReactiveBehavior {
 		State currentState ;
 		City currentCity = vehicle.getCurrentCity();
 		if ( availableTask == null) {
-			System.out.println("zut");
 			currentState = new State ( currentCity  , vehicle.getCurrentCity() , false) ;
 		} else {
 			currentState = new State ( currentCity , availableTask.deliveryCity , true );
@@ -86,7 +85,6 @@ public class ReactiveTemplate implements ReactiveBehavior {
 		}
 		
 		int intAction = V[currentState.toInt()];
-		System.out.println(intAction);
 		if ( intAction == actionTakeTask) {
 			action = new Pickup(availableTask);
 		} else {
@@ -102,12 +100,11 @@ public class ReactiveTemplate implements ReactiveBehavior {
 			System.out.println("The total profit after "+numActions+" actions is "+myAgent.getTotalProfit()+" (average profit: "+(myAgent.getTotalProfit() / (double)numActions)+")");
 		}
 		numActions++;
-		System.out.println("1");
 		return action;
 	}
 	
 	void CreateStateDomain (Topology topology) {
-		stateSize = topology.size()*(topology.size()+1)*2;
+		stateSize = topology.size()*(topology.size()+1);
 		List<City> city = topology.cities();
 		
 		for (City  c1 : city){
@@ -218,10 +215,8 @@ public class ReactiveTemplate implements ReactiveBehavior {
 			Qmax[i] = 0 ;
 		}
 		//TODO delete iter
-		int iter = 0 ;
-		while ( noDiff < stateSize && iter < 100){
-			iter++;
-			System.out.println(iter);
+		while ( noDiff < stateSize){
+			
 			noDiff=0;
 			for(State s : states){
 				
@@ -295,10 +290,9 @@ public class ReactiveTemplate implements ReactiveBehavior {
 				V[coord] = bestAction ;
 				if(Qmax[coord] ==Qbest){
 					noDiff++;
-				}
+				} 
 				Qmax[coord] = Qbest;
 			}
-			
 		}
 	}
 	
